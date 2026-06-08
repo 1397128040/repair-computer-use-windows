@@ -5,6 +5,8 @@ description: Diagnose and repair Windows Codex Desktop Computer Use when it is u
 
 # Repair Windows Computer Use
 
+Upstream: https://github.com/chen0416ccc-cpu/codex-windows-fast-patch-skill
+
 Repair only Computer Use and its related bundled browser state. Do not repatch unrelated Codex features unless explicitly requested.
 
 ## Security
@@ -73,6 +75,25 @@ startup ready
 
 This means the Chrome extension host locked the mutable marketplace mirror.
 
+Strict verification can also fail first with a missing bundled plugin manifest, for example:
+
+```text
+missing plugin manifest: ...\.codex\.tmp\bundled-marketplaces\openai-bundled\plugins\browser\.codex-plugin\plugin.json
+```
+
+Treat a missing `browser` or `chrome` manifest in the mutable bundled marketplace as another symptom of mirror damage. Continue checking the filtered Desktop logs for `EBUSY`, `missing-helper-path`, and native pipe startup failures before deciding the cause is unrelated.
+
+If Computer Use works immediately after repair but becomes unavailable after restarting Codex Desktop, check `[marketplaces.openai-bundled].source`. A source under `.codex\.tmp\bundled-marketplaces\openai-bundled` can reproduce the same startup sequence:
+
+```text
+startup ready
+-> EBUSY while refreshing .tmp\bundled-marketplaces\openai-bundled\plugins\chrome
+-> helper paths changed
+-> missing-helper-path
+```
+
+In that case, the persistent fix is to point the local `openai-bundled` marketplace at a non-`.tmp` stable mirror, not just to repoint plugin cache `latest` junctions.
+
 ### 3. Repair
 
 Run:
@@ -84,7 +105,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-root>\scripts\repair
 The script repairs automatically when verification fails. It:
 
 - Stops bundled `extension-host` lock holders.
-- Rebuilds the `openai-bundled` mirror from the current Codex package.
+- Rebuilds a stable non-`.tmp` `openai-bundled` mirror from the current Codex package.
+- Points `[marketplaces.openai-bundled].source` at the stable mirror.
 - Copies `browser` and `chrome` into stable versioned cache directories.
 - Repoints their `latest` junctions to stable directories.
 - Rewrites the Chrome Native Messaging manifest to a stable versioned host path.
@@ -102,8 +124,18 @@ Confirm without printing unrelated configuration:
 - `[features] computer_use = true`.
 - `[plugins."computer-use@openai-bundled"] enabled = true`.
 - `CODEX_ELECTRON_ENABLE_WINDOWS_COMPUTER_USE=1` exists for the current user.
-- `browser/latest` and `chrome/latest` target versioned caches, not `.tmp`.
+- `[marketplaces.openai-bundled].source` points to a stable non-`.tmp` mirror such as `.codex\plugins\marketplaces\openai-bundled-stable`.
+- `browser/latest`, `chrome/latest`, and `computer-use/latest` target versioned caches, not `.tmp`.
 - Native Messaging points to `chrome\<version>\extension-host\...`, not `chrome\latest` or `.tmp`.
+
+Even when the repair script reports `verification ok`, independently verify `[features] computer_use = true` and the current-user environment gate. If `[features] computer_use = true` is missing, back up `config.toml` and add only that key under `[features]`, preserving UTF-8 without BOM.
+
+When setting `CODEX_ELECTRON_ENABLE_WINDOWS_COMPUTER_USE`, be careful with elevated PowerShell sessions: elevated `HKCU` can be a different user hive than the current Desktop user. Prefer writing and verifying this value from the normal current-user context:
+
+```powershell
+reg add HKCU\Environment /v CODEX_ELECTRON_ENABLE_WINDOWS_COMPUTER_USE /t REG_SZ /d 1 /f
+reg query HKCU\Environment /v CODEX_ELECTRON_ENABLE_WINDOWS_COMPUTER_USE
+```
 
 Only set:
 
@@ -128,6 +160,8 @@ Confirm Desktop logs end with:
 computer-use native pipe startup ready
 ```
 
+When checking logs after repair, do not let older failures dominate the result. Sort or filter by recent `LastWriteTime` and timestamps, and distinguish pre-repair `EBUSY` / `missing-helper-path` failures from post-repair `startup ready`.
+
 For a fresh runtime, inspect only:
 
 - `nodeRepl.env.SKY_CUA_NATIVE_PIPE_DIRECTORY`
@@ -136,7 +170,7 @@ For a fresh runtime, inspect only:
 
 Then import the absolute Computer Use client path and call `sky.list_apps()`.
 
-If the current `node_repl` host started before repair, `js_reset` does not refresh native-pipe injection. Trust `startup ready` plus strict helper verification, then verify `sky.list_apps()` in a new session or after Codex restarts.
+If the current `node_repl` host started before repair, `js_reset` does not refresh native-pipe injection. If strict verification and Desktop `startup ready` both succeed, a missing `nodeRepl.nativePipe` in that old process means a new session is required for runtime verification; do not repeat repair solely because of the old process state. Trust `startup ready` plus strict helper verification, then verify `sky.list_apps()` in a new session or after Codex restarts.
 
 ## Report
 

@@ -79,6 +79,11 @@ function Resolve-ExistingDirectory {
   return (Resolve-Path -LiteralPath $Path).Path
 }
 
+function Get-LocalBundledMarketplaceRoot {
+  param([string]$CodexHomeResolved)
+  return Join-Path $CodexHomeResolved 'plugins\marketplaces\openai-bundled-stable'
+}
+
 function Assert-UnderPath {
   param(
     [string]$Path,
@@ -980,7 +985,7 @@ try {
 
 function Install-ComputerUse {
   $codexHomeResolved = Resolve-OrCreateDirectory $CodexHome
-  $marketplaceRoot = Join-Path $codexHomeResolved '.tmp\bundled-marketplaces\openai-bundled'
+  $marketplaceRoot = Get-LocalBundledMarketplaceRoot $codexHomeResolved
   $pluginSourceRoot = Join-Path $marketplaceRoot 'plugins\computer-use'
   $cacheRoot = Join-Path $codexHomeResolved 'plugins\cache\openai-bundled\computer-use'
   $cacheVersionRoot = Join-Path $cacheRoot $PluginVersion
@@ -1017,7 +1022,7 @@ function Install-ComputerUse {
 
 function Test-ComputerUse {
   $codexHomeResolved = Resolve-ExistingDirectory $CodexHome
-  $marketplaceRoot = Join-Path $codexHomeResolved '.tmp\bundled-marketplaces\openai-bundled'
+  $marketplaceRoot = Get-LocalBundledMarketplaceRoot $codexHomeResolved
   $manifestPath = Join-Path $marketplaceRoot '.agents\plugins\marketplace.json'
   $cacheLatest = Join-Path $codexHomeResolved 'plugins\cache\openai-bundled\computer-use\latest'
   $browserPluginRoot = Join-Path $marketplaceRoot 'plugins\browser'
@@ -1053,7 +1058,7 @@ function Test-ComputerUse {
     }
   }
 
-  foreach ($latestPath in @($browserCacheLatest, $chromeCacheLatest)) {
+  foreach ($latestPath in @($browserCacheLatest, $chromeCacheLatest, $cacheLatest)) {
     $item = Get-Item -LiteralPath $latestPath -Force
     if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -eq 0) {
       throw "bundled plugin latest path is not a junction: $latestPath"
