@@ -107,6 +107,14 @@ bundled_plugins_runtime_marketplace_written pluginCount=4 pluginNames=["browser"
 
 In this case the later marketplace is correct, but the early uninstall may already have removed `browser/latest` or repointed `chrome/latest` back into `.tmp`. Repair by rebuilding the bundled mirror, restoring `browser/latest`, `chrome/latest`, and `computer-use/latest` to stable cache targets, and ensuring `[plugins."browser@openai-bundled"] enabled = true`.
 
+If the user asks to fully uninstall and reinstall the related bundled plugins, use the scripted clean reinstall instead of manually deleting broad Codex state:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-root>\scripts\repair-computer-use.ps1" -CleanBundledReinstall
+```
+
+This only removes and recreates the `openai-bundled` Browser, Chrome, and Computer Use plugin caches plus the Chrome Native Messaging manifest. It does not uninstall Codex Desktop, delete account state, or touch unrelated plugins.
+
 ### 3. Repair
 
 Run:
@@ -122,7 +130,7 @@ The script repairs automatically when verification fails. It:
 - Points `[marketplaces.openai-bundled].source` at that `.tmp` bundled marketplace.
 - Copies `browser` and `chrome` into stable versioned cache directories.
 - Repoints their `latest` junctions to stable directories.
-- Rewrites the Chrome Native Messaging manifest to a stable versioned host path.
+- Creates or rewrites the Chrome Native Messaging manifest to a stable versioned host path.
 - Installs the local Computer Use compatibility plugin.
 - Enables `browser@openai-bundled` so the Browser settings UI does not remain at Install after repair.
 - Enables the current-user Computer Use environment gate.

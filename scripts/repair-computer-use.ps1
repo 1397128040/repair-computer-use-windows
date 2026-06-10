@@ -4,6 +4,7 @@ param(
   [string]$PluginVersion = '0.1.0-local',
   [switch]$VerifyOnly,
   [switch]$StrictVerifyOnly,
+  [switch]$CleanBundledReinstall,
   [switch]$SkipUserEnvironment
 )
 
@@ -788,7 +789,15 @@ function Update-ChromeNativeMessagingManifest {
 
   $manifestPath = Join-Path $env:LOCALAPPDATA 'OpenAI\extension\com.openai.codexextension.json'
   if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
-    Write-Log "warning: Chrome native messaging manifest not found: $manifestPath"
+    $json = [ordered]@{
+      allowed_origins = @('chrome-extension://hehggadaopoacecdllhhajmbjkdcmajg/')
+      description = 'Codex chrome native messaging host'
+      name = 'com.openai.codexextension'
+      path = $hostExe
+      type = 'stdio'
+    }
+    ConvertTo-JsonFile $manifestPath $json
+    Write-Log "created Chrome native messaging manifest: $manifestPath"
     return
   }
 
@@ -809,6 +818,32 @@ function Update-ChromeNativeMessagingManifest {
   ConvertTo-JsonFile $manifestPath $json
   Write-Log "updated Chrome native messaging manifest: $manifestPath"
   Write-Log "Chrome native messaging manifest backup: $backupPath"
+}
+
+function Reset-OpenAiBundledPluginState {
+  $codexHomeResolved = Resolve-OrCreateDirectory $CodexHome
+  $marketplaceRoot = Get-LocalBundledMarketplaceRoot $codexHomeResolved
+  $cacheRoot = Join-Path $codexHomeResolved 'plugins\cache\openai-bundled'
+  $nativeManifest = Join-Path $env:LOCALAPPDATA 'OpenAI\extension\com.openai.codexextension.json'
+
+  Stop-OpenAiBundledExtensionHosts @($marketplaceRoot, $cacheRoot)
+
+  foreach ($pluginName in @('browser', 'chrome', 'computer-use')) {
+    $pluginCacheRoot = Join-Path $cacheRoot $pluginName
+    Assert-UnderPath $pluginCacheRoot $cacheRoot
+    if (Test-Path -LiteralPath $pluginCacheRoot) {
+      Write-Log "removing bundled plugin cache for clean reinstall: $pluginCacheRoot"
+      Remove-ReparsePointOrDirectory $pluginCacheRoot
+    }
+  }
+
+  if (Test-Path -LiteralPath $nativeManifest -PathType Leaf) {
+    $backupPath = "$nativeManifest.$(Get-Date -Format 'yyyyMMdd-HHmmss-fff').clean-reinstall.bak"
+    Copy-Item -LiteralPath $nativeManifest -Destination $backupPath -Force
+    Remove-Item -LiteralPath $nativeManifest -Force
+    Write-Log "removed Chrome native messaging manifest for clean reinstall: $nativeManifest"
+    Write-Log "Chrome native messaging manifest backup: $backupPath"
+  }
 }
 
 function Sync-BundledMarketplaceFromInstalledApp {
@@ -1127,7 +1162,18 @@ function Test-ComputerUse {
   Write-Log 'verification ok'
 }
 
+if ($CleanBundledReinstall -and $StrictVerifyOnly) {
+  throw 'CleanBundledReinstall cannot be combined with StrictVerifyOnly'
+}
+
 if ($StrictVerifyOnly) {
+  Test-ComputerUse
+  exit 0
+}
+
+if ($CleanBundledReinstall) {
+  Reset-OpenAiBundledPluginState
+  Install-ComputerUse
   Test-ComputerUse
   exit 0
 }
